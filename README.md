@@ -5,35 +5,46 @@ An OpenCode plugin for codex-lb users to manage multiple API keys and endpoints.
 - Simplified setup for codex-lb users
 - Multiple API keys setup
 - Models setting is in sync with `models.dev`, no additional model setting is required for provider
+- Pooled usage display on the sidebar
 
-## Configuration
-Include `@huzky-v/opencode-codex-lb` in `opencode.json`.
-```
-  "plugin": [
-    "@huzky-v/opencode-codex-lb"
-  ],
+## Installation
+
+One-command server and TUI installation requires v0.2.0 or later. Install both
+plugins globally with:
+
+```bash
+opencode plugin @huzky-v/opencode-codex-lb@latest --global --force
 ```
 
-To configure `codex-lb` provider in Opencode, please set the provider in `opencode.json`,
-```
+Quit and restart OpenCode after installation.
+
+## Service Configuration
+
+Service URLs and API-key environment references are user-specific and remain in
+`<config-dir>/opencode.json` (normally `~/.config/opencode/opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@huzky-v/opencode-codex-lb"],
   "provider": {
     "codex-lb": {
       "options": {
         "services": {
           "paid": {
-            "baseURL": "https://codex-lb.example.com//v1",
+            "baseURL": "https://codex-lb.example.com/v1",
             "apiKey": "{env:CODEX_KEY_PAID}"
           },
           "free": {
             "baseURL": "https://codex-lb.example.com/v1",
             "apiKey": "{env:CODEX_KEY_FREE}"
-          },
-          other codex-lb provider...
+          }
         }
       }
     }
-  },
+  }
+}
 ```
 
-To make reference of the model, please use the following: 
-`codex-lb-${key_name}/model-name`, for example: `codex-lb-free/gpt-5.4-mini`
+Reference models as `codex-lb-${service}/model-name`, for example
+`codex-lb-free/gpt-5.4-mini`.
