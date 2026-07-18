@@ -21,6 +21,20 @@ const SUPPORT_SUCCESS_TTL_MS = 5 * 60_000
 const SUPPORT_FAILURE_TTL_MS = 60_000
 const MAX_USAGE_SUPPORT_CACHE_ENTRIES = 8
 
+const SIDEBAR_MAX_WIDTH = 36
+const MAX_PERCENT_LABEL = "100.0%"
+const MIN_BAR_WIDTH = 10
+const DEFAULT_BAR_WIDTH = 20
+const BAR_FILLED_CHAR = "█"
+const BAR_EMPTY_CHAR = "░"
+
+function computeBarWidth(prefixLength: number): number {
+  return Math.max(
+    MIN_BAR_WIDTH,
+    SIDEBAR_MAX_WIDTH - prefixLength - 1 - MAX_PERCENT_LABEL.length,
+  )
+}
+
 type UsageSupportCacheEntry = {
   promise: Promise<boolean | undefined>
   expiresAt: number
@@ -380,9 +394,11 @@ function UsageRow(props: {
   label: string
   value: () => number
 }) {
+  const prefix = `${props.label}: `
+  const barWidth = computeBarWidth(prefix.length)
   return (
     <text fg={usageColor(props.api, props.value())}>
-      {props.label}: {usageTrack(props.value())} {formatUsagePercentage(props.value())}%
+      {prefix}{usageTrack(props.value(), barWidth)} {formatUsagePercentage(props.value())}%
     </text>
   )
 }
@@ -401,10 +417,11 @@ export function hasUsageValue(value: number | null | undefined): value is number
   return typeof value === "number"
 }
 
-export function usageTrack(percentage: number): string {
+export function usageTrack(percentage: number, width: number = DEFAULT_BAR_WIDTH): string {
   const value = Number.isFinite(percentage) ? Math.max(0, Math.min(100, percentage)) : 0
-  const filled = Math.round((value / 100) * 20)
-  return "#".repeat(filled) + "-".repeat(20 - filled)
+  const filled = Math.round((value / 100) * width)
+  const empty = width - filled
+  return BAR_FILLED_CHAR.repeat(filled) + BAR_EMPTY_CHAR.repeat(empty)
 }
 
 export function formatUsagePercentage(percentage: number): string {

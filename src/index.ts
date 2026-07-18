@@ -1,5 +1,9 @@
 import type { Plugin, PluginModule, PluginOptions } from "@opencode-ai/plugin"
 import { buildProviders, injectProviders } from "./providers.js"
+import {
+  isCodexLBProviderID,
+  pickLowestOutputCostModel,
+} from "./small_model.js"
 import { SERVICE, type CodexLBOptions, type ProviderConfig } from "./types.js"
 
 export const CodexLB: Plugin = async (
@@ -20,6 +24,17 @@ export const CodexLB: Plugin = async (
       const pendingLogs = injectProviders(config, preparedProviders, input.client)
       if (pendingLogs.length > 0) {
         await Promise.allSettled(pendingLogs)
+      }
+    },
+
+    "experimental.provider.small_model": async (hookInput, hookOutput) => {
+      if (!isCodexLBProviderID(hookInput.provider.id)) {
+        return
+      }
+
+      const cheapest = pickLowestOutputCostModel(hookInput.provider.models)
+      if (cheapest) {
+        hookOutput.model = cheapest
       }
     },
   }

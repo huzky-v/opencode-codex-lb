@@ -2,6 +2,16 @@
 
 All notable changes to `@huzky-v/opencode-codex-lb` are documented here.
 
+## [0.2.3] - 2026-07-18
+
+### Added
+
+- Added `small_model` hook: automatically picks the lowest output-cost model for title generation.
+
+### Changed
+
+- Improved pooled usage bar styling with elevated bar characters and dynamic width.
+
 ## [0.2.0] - 2026-07-17
 
 ### Added

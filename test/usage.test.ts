@@ -238,10 +238,15 @@ describe("TUI usage track", () => {
     expect(formatUsagePercentage(82.54)).toBe("82.5")
   })
 
-  test("renders a fixed 20-character remaining-capacity track", () => {
-    expect(usageTrack(75)).toBe("###############-----")
-    expect(usageTrack(0)).toBe("--------------------")
-    expect(usageTrack(100)).toBe("####################")
+  test("renders a 20-character remaining-capacity track using opencode-quota block chars", () => {
+    expect(usageTrack(75)).toBe("███████████████░░░░░")
+    expect(usageTrack(0)).toBe("░░░░░░░░░░░░░░░░░░░░")
+    expect(usageTrack(100)).toBe("████████████████████")
+  })
+
+  test("honours an explicit track width", () => {
+    expect(usageTrack(50, 10)).toBe("█████░░░░░")
+    expect(usageTrack(100, 18)).toBe("██████████████████")
   })
 })
 

@@ -5,7 +5,8 @@ An OpenCode plugin for codex-lb users to manage multiple API keys and endpoints.
 - Simplified setup for codex-lb users
 - Multiple API keys setup
 - Models setting is in sync with `models.dev`, no additional model setting is required for provider
-- Pooled usage display on the sidebar
+- Automatic small model selection (cheapest by output cost) for title generation
+- Pooled usage display on the sidebar with compact, styled progress bars
 
 ## Installation
 
