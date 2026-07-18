@@ -14,7 +14,7 @@ One-command server and TUI installation requires v0.2.0 or later. Install both
 plugins globally with:
 
 ```bash
-opencode plugin @huzky-v/opencode-codex-lb@latest --global --force
+opencode plugin @huzky-v/opencode-codex-lb@0.2.3 --global --force
 ```
 
 Quit and restart OpenCode after installation.
