@@ -10,6 +10,7 @@ export const MODEL_FIELDS = [
   "release_date",
   "attachment",
   "reasoning",
+  "reasoning_options",
   "temperature",
   "tool_call",
   "interleaved",

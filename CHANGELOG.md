@@ -2,6 +2,12 @@
 
 All notable changes to `@huzky-v/opencode-codex-lb` are documented here.
 
+## [0.2.4] - 2026-07-21
+
+### Added
+
+- Added support for preserving model reasoning options and exposing a `max` reasoning variant when advertised by `models.dev`.
+
 ## [0.2.3] - 2026-07-18
 
 ### Added

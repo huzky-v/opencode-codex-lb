@@ -131,6 +131,25 @@ export function mirrorModel(modelID: string, raw: unknown): ModelConfig {
     }
   }
 
+  if (
+    Array.isArray(raw.reasoning_options) &&
+    raw.reasoning_options.some(
+      (option) =>
+        isRecord(option) &&
+        option.type === "effort" &&
+        Array.isArray(option.values) &&
+        option.values.includes("max"),
+    )
+  ) {
+    mirrored.variants = {
+      max: {
+        reasoningEffort: "max",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"],
+      },
+    }
+  }
+
   if (isRecord(raw.provider) && typeof raw.provider.npm === "string") {
     mirrored.provider = {
       npm: raw.provider.npm,

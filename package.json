@@ -1,6 +1,6 @@
 {
   "name": "@huzky-v/opencode-codex-lb",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "OpenCode plugin for service-based OpenAI-compatible load balancing",
   "license": "MIT",
   "repository": {
