@@ -1,6 +1,6 @@
 {
   "name": "@huzky-v/opencode-codex-lb",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "OpenCode plugin for service-based OpenAI-compatible load balancing",
   "license": "MIT",
   "repository": {
@@ -16,23 +16,25 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./server": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    },
     "./tui": {
       "types": "./dist/tui.d.ts",
       "import": "./dist/tui.js",
       "default": "./dist/tui.js"
     }
   },
-  "oc-plugin": [
-    "server",
-    "tui"
-  ],
   "files": [
-    "dist"
+    "dist/index.*",
+    "dist/providers.*",
+    "dist/models.*",
+    "dist/discovery.*",
+    "dist/options.*",
+    "dist/logger.*",
+    "dist/small_model.*",
+    "dist/types.*",
+    "dist/utils.*",
+    "dist/usage.*",
+    "dist/tui.js",
+    "dist/tui.d.ts"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/build-tui.mjs",
@@ -40,15 +42,18 @@
     "publish:npm": "npm run build && npm publish --registry https://registry.npmjs.org/ --access public"
   },
   "dependencies": {
-    "@opentui/core": "^0.4.3",
-    "@opentui/solid": "^0.4.3",
-    "solid-js": "^1.9.12"
+    "@opencode/plugin": "2.0.29"
   },
   "peerDependencies": {
-    "@opentui/core": ">=0.3.4",
-    "@opentui/solid": ">=0.3.4"
+    "@opencode/theme": "2.0.29",
+    "@opentui/core": ">=0.5.17",
+    "@opentui/solid": ">=0.5.17",
+    "solid-js": ">=1.9.0"
   },
   "peerDependenciesMeta": {
+    "@opencode/theme": {
+      "optional": true
+    },
     "@opentui/core": {
       "optional": true
     },
@@ -59,10 +64,11 @@
   "devDependencies": {
     "@babel/core": "^7.28.0",
     "@babel/preset-typescript": "^7.27.1",
-    "@opencode-ai/plugin": "latest",
-    "@opentui/core": "^0.3.4",
-    "@opentui/solid": "^0.3.4",
+    "@opencode/theme": "2.0.29",
+    "@opentui/core": "^0.5.17",
+    "@opentui/solid": "^0.5.17",
     "babel-preset-solid": "^1.9.12",
+    "solid-js": "^1.9.0",
     "typescript": "^5.9.3"
   }
 }

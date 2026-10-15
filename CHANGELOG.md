@@ -2,6 +2,13 @@
 
 All notable changes to `@huzky-v/opencode-codex-lb` are documented here.
 
+## [0.2.5] - 2026-10-15
+
+### Changed
+
+- Ported the server and CLI integrations to the OpenCode v2 plugin SDK. This release no longer implements the V1 plugin API.
+- Replaced legacy provider configuration injection with V2 provider and model transforms.
+
 ## [0.2.4] - 2026-07-21
 
 ### Added

@@ -1,20 +1,13 @@
-import { SERVICE, type AppClient, type LogLevel } from "./types.js"
+import { SERVICE, type LogLevel } from "./types.js"
 
 export async function log(
-  client: AppClient,
   level: LogLevel,
   message: string,
   extra?: Record<string, unknown>,
 ): Promise<void> {
   try {
-    await client.app.log({
-      body: {
-        service: SERVICE,
-        level,
-        message,
-        extra,
-      },
-    })
+    const details = extra === undefined ? "" : ` ${JSON.stringify(extra)}`
+    console[level](`[${SERVICE}] ${message}${details}`)
   } catch {
     // Ignore logging failures to keep startup resilient.
   }

@@ -3,9 +3,9 @@ import { SERVICE_PROVIDER_PREFIX } from "./types.js"
 export type ModelLike = {
   id: string
   providerID: string
-  cost?: {
+  cost?: readonly {
     output: number
-  }
+  }[]
 }
 
 export function isCodexLBProviderID(providerID: string): boolean {
@@ -13,24 +13,22 @@ export function isCodexLBProviderID(providerID: string): boolean {
 }
 
 export function pickLowestOutputCostModel<T extends ModelLike>(
-  models: Record<string, T>,
+  models: Iterable<T>,
 ): T | undefined {
-  const candidates = Object.values(models).filter((model) => {
-    const output = model.cost?.output
-    return typeof output === "number" && Number.isFinite(output) && output > 0
-  })
+  let cheapest: T | undefined
+  let cheapestOutput = Infinity
 
-  if (candidates.length === 0) {
-    return undefined
+  for (const model of models) {
+    const output = model.cost?.[0]?.output
+    if (typeof output !== "number" || !Number.isFinite(output) || output <= 0) continue
+    if (
+      output < cheapestOutput ||
+      (output === cheapestOutput && model.id.localeCompare(cheapest?.id ?? "") < 0)
+    ) {
+      cheapest = model
+      cheapestOutput = output
+    }
   }
 
-  candidates.sort((a, b) => {
-    const diff = (a.cost?.output ?? Infinity) - (b.cost?.output ?? Infinity)
-    if (diff !== 0) {
-      return diff
-    }
-    return String(a.id).localeCompare(String(b.id))
-  })
-
-  return candidates[0]
+  return cheapest
 }

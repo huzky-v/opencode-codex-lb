@@ -20,7 +20,6 @@ const {
   resolveActiveProviderID,
   resolveLatestMessageContext,
   resolveProviderCredentials,
-  sessionIDFromUpdatedEvent,
   shouldFetchUsage,
   formatUsagePercentage,
   usageTrack,
@@ -124,110 +123,27 @@ describe("parsePooledUsage", () => {
   })
 })
 
-describe("TUI provider resolution", () => {
-  test("prefers the session model over the configured agent model", () => {
-    expect(
-      resolveActiveProviderID(
-        { model: { providerID: "codex-lb-paid" }, agent: "build" },
-        { model: "codex-lb-free/gpt-5", agent: { build: { model: "codex-lb-build/gpt-5" } } },
-      ),
-    ).toBe("codex-lb-paid")
+describe("V2 TUI provider resolution", () => {
+  test("uses the most recent assistant model rather than stale session selection", () => {
+    expect(resolveActiveProviderID(
+      { model: { providerID: "codex-lb-free" } },
+      [
+        { type: "model-switched", model: { providerID: "codex-lb-paid" } },
+        { type: "assistant", model: { providerID: "codex-lb-active" } },
+      ],
+    )).toBe("codex-lb-active")
   })
 
-  test("falls back to the configured agent model", () => {
-    expect(
-      resolveActiveProviderID(
-        { agent: "build" },
-        { agent: { build: { model: "codex-lb-build/gpt-5" } } },
-      ),
-    ).toBe("codex-lb-build")
+  test("falls back to the selected session model", () => {
+    expect(resolveActiveProviderID({ model: { providerID: "codex-lb-paid" } }, [])).toBe("codex-lb-paid")
+    expect(resolveActiveProviderID({}, [])).toBeUndefined()
   })
 
-  test("falls back to the global configured model", () => {
-    expect(
-      resolveActiveProviderID(
-        { agent: "build" },
-        { model: "codex-lb-global/gpt-5", agent: { build: undefined } },
-      ),
-    ).toBe("codex-lb-global")
-  })
-
-  test("skips model references with an empty provider prefix", () => {
-    expect(
-      resolveActiveProviderID(
-        { agent: "build" },
-        { model: "codex-lb-global/gpt-5", agent: { build: { model: "/gpt-5" } } },
-      ),
-    ).toBe("codex-lb-global")
-    expect(
-      resolveActiveProviderID(
-        { agent: "build" },
-        { agent: { build: { model: "/gpt-5" } } },
-      ),
-    ).toBeUndefined()
-  })
-
-  test("resolves a literal provider key", () => {
-    expect(
-      resolveProviderCredentials({
-        env: [],
-        options: { baseURL: " https://lb.example/v1 ", apiKey: " literal " },
-      }),
-    ).toEqual({ baseURL: "https://lb.example/v1", apiKey: "literal" })
-  })
-
-  test("prefers the provider key over configured key sources", () => {
-    expect(
-      resolveProviderCredentials({
-        key: " provider-key ",
-        env: [],
-        options: { baseURL: "https://lb.example/v1", apiKey: "option-key" },
-      }),
-    ).toEqual({ baseURL: "https://lb.example/v1", apiKey: "provider-key" })
-  })
-
-  test("resolves the first non-empty environment-backed key and cleans it up", () => {
-    const firstName = "OPENCODE_CODEX_LB_TEST_EMPTY"
-    const secondName = "OPENCODE_CODEX_LB_TEST_KEY"
-    const previousFirst = process.env[firstName]
-    const previousSecond = process.env[secondName]
-
-    try {
-      process.env[firstName] = "   "
-      process.env[secondName] = " env-key "
-      expect(
-        resolveProviderCredentials({
-          env: [firstName, secondName],
-          options: { baseURL: "https://lb.example/v1" },
-        }),
-      ).toEqual({ baseURL: "https://lb.example/v1", apiKey: "env-key" })
-    } finally {
-      if (previousFirst === undefined) {
-        delete process.env[firstName]
-      } else {
-        process.env[firstName] = previousFirst
-      }
-      if (previousSecond === undefined) {
-        delete process.env[secondName]
-      } else {
-        process.env[secondName] = previousSecond
-      }
-    }
-  })
-
-  test("returns undefined when the base URL or key is missing", () => {
-    expect(
-      resolveProviderCredentials({
-        env: [],
-        options: { apiKey: "key" },
-      }),
-    ).toBeUndefined()
-    expect(
-      resolveProviderCredentials({
-        env: [],
-        options: { baseURL: "https://lb.example/v1" },
-      }),
-    ).toBeUndefined()
+  test("uses V2 provider settings for usage credentials", () => {
+    expect(resolveProviderCredentials({
+      settings: { baseURL: " https://lb.example/v1 ", apiKey: " literal " },
+    })).toEqual({ baseURL: "https://lb.example/v1", apiKey: "literal" })
+    expect(resolveProviderCredentials({ settings: { baseURL: "https://lb.example/v1" } })).toBeUndefined()
   })
 })
 
@@ -273,24 +189,20 @@ describe("TUI usage refresh", () => {
   })
 })
 
-describe("TUI message context", () => {
-  test("prefers the newest assistant provider and keeps its agent", () => {
-    expect(
-      resolveLatestMessageContext([
-        { role: "user", agent: "build", model: { providerID: "codex-lb-user" } },
-        { role: "assistant", agent: "build", providerID: "codex-lb-assistant" },
-      ]),
-    ).toEqual({ model: { providerID: "codex-lb-assistant" }, agent: "build" })
+describe("V2 TUI message context", () => {
+  test("uses the latest model selection or assistant model", () => {
+    expect(resolveLatestMessageContext([
+      { type: "model-switched", model: { providerID: "codex-lb-free" } },
+      { type: "assistant", model: { providerID: "codex-lb-paid" } },
+    ])).toEqual({ model: { providerID: "codex-lb-paid" } })
   })
 
-  test("uses a user model when no newer assistant provider exists", () => {
-    expect(
-      resolveLatestMessageContext([{ role: "user", agent: "build", model: { providerID: "codex-lb-user" } }]),
-    ).toEqual({ model: { providerID: "codex-lb-user" }, agent: "build" })
-  })
-
-  test("keeps the newest message agent when provider data is unavailable", () => {
-    expect(resolveLatestMessageContext([{ role: "user", agent: "build" }])).toEqual({ agent: "build" })
+  test("ignores non-model messages and falls back to session selection", () => {
+    expect(resolveLatestMessageContext([{ type: "user" }])).toEqual({})
+    expect(resolveLatestMessageContext([
+      { type: "model-switched", model: { providerID: "codex-lb-free" } },
+      { type: "user" },
+    ])).toEqual({ model: { providerID: "codex-lb-free" } })
   })
 })
 
@@ -324,11 +236,6 @@ describe("TUI support cache expiry", () => {
   })
 })
 
-describe("TUI session events", () => {
-  test("reads the session identity from session.updated info", () => {
-    expect(sessionIDFromUpdatedEvent({ properties: { info: { id: "session-1" } } })).toBe("session-1")
-  })
-})
 
 describe("usage HTTP client", () => {
   test("detects support from X-App-Version using only /models", async () => {

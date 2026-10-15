@@ -1,8 +1,8 @@
 /** @jsxImportSource @opentui/solid */
 
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import { Plugin } from "@opencode/plugin/tui"
+import type { Context as TuiPluginContext } from "@opencode/plugin/tui/context"
 import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js"
-import { createStore } from "solid-js/store"
 import { detectUsageSupport, fetchPooledUsage, type PooledUsage } from "./usage.js"
 
 type OpenTUIIntrinsicElements = import("@opentui/solid/jsx-runtime").JSX.IntrinsicElements
@@ -47,118 +47,49 @@ const usageSupportCache = new Map<string, UsageSupportCacheEntry>()
 
 type ActiveProviderContext = {
   model?: { providerID: string }
-  agent?: string
 }
 
 type MessageContext = {
-  role: "assistant" | "user"
-  agent?: string
-  providerID?: string
+  type: string
   model?: { providerID?: string }
-}
-
-function providerIDFromModel(model: string | undefined): string | undefined {
-  if (typeof model !== "string") {
-    return undefined
-  }
-
-  const value = model.trim()
-  if (!value) {
-    return undefined
-  }
-
-  return value.split("/", 1)[0] || undefined
 }
 
 export function resolveActiveProviderID(
   session: ActiveProviderContext,
-  config: { model?: string; agent?: Record<string, { model?: string } | undefined> },
+  messages: ReadonlyArray<MessageContext>,
 ): string | undefined {
-  const sessionProviderID = session.model?.providerID
-  if (sessionProviderID) {
-    return sessionProviderID
-  }
-
-  const agentModel = session.agent ? config.agent?.[session.agent]?.model : undefined
-  return providerIDFromModel(agentModel) ?? providerIDFromModel(config.model)
+  const latestModel = resolveLatestMessageContext(messages).model?.providerID
+  return latestModel ?? session.model?.providerID
 }
 
 export function resolveProviderCredentials(
-  provider: {
-    key?: string
-    env: string[]
-    options: Record<string, unknown>
-  },
+  provider: { settings?: Record<string, unknown> },
 ): { baseURL: string; apiKey: string } | undefined {
-  const baseURL = typeof provider.options.baseURL === "string" ? provider.options.baseURL.trim() : ""
-  if (!baseURL) {
-    return undefined
-  }
-
-  const candidates = [
-    provider.key,
-    typeof provider.options.apiKey === "string" ? provider.options.apiKey : undefined,
-    ...provider.env.map((name) => process.env[name]),
-  ]
-  const apiKey = candidates.find((value) => typeof value === "string" && value.trim())
-
-  if (typeof apiKey !== "string") {
-    return undefined
-  }
-
-  return { baseURL, apiKey: apiKey.trim() }
+  const settings = provider.settings ?? {}
+  const baseURL = typeof settings.baseURL === "string" ? settings.baseURL.trim() : ""
+  const apiKey = typeof settings.apiKey === "string" ? settings.apiKey.trim() : ""
+  if (!baseURL || !apiKey) return undefined
+  return { baseURL, apiKey }
 }
 
-export function resolveLatestMessageContext(messages: ReadonlyArray<MessageContext>): ActiveProviderContext {
-  let agent: string | undefined
+export function resolveLatestMessageContext(
+  messages: ReadonlyArray<MessageContext>,
+): ActiveProviderContext {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
-    if (agent === undefined && message.agent) {
-      agent = message.agent
-    }
-
-    const providerID = message.role === "assistant" ? message.providerID : message.model?.providerID
-    if (providerID) {
-      return { model: { providerID }, agent }
-    }
+    const providerID =
+      message.type === "assistant" || message.type === "model-switched"
+        ? message.model?.providerID
+        : undefined
+    if (providerID) return { model: { providerID } }
   }
 
-  return agent === undefined ? {} : { agent }
+  return {}
 }
 
 export function isUsageSupportCacheFresh(expiresAt: number, now: number): boolean {
   return expiresAt > now
 }
-
-export function sessionIDFromUpdatedEvent(event: { properties: { info: { id: string } } }): string {
-  return event.properties.info.id
-}
-
-const tui: TuiPlugin = async (api) => {
-  const [usageBySession, setUsageBySession] = createStore<Record<string, UsageState>>({})
-  api.slots.register({
-    order: 150,
-    slots: {
-      sidebar_content(_context, props) {
-        return (
-          <UsageView
-            api={api}
-            sessionID={props.session_id}
-            state={usageBySession}
-            setState={(state) => setUsageBySession(props.session_id, state)}
-          />
-        )
-      },
-    },
-  })
-}
-
-const plugin: TuiPluginModule & { id: string } = {
-  id: "opencode-codex-lb",
-  tui,
-}
-
-export default plugin
 
 type UsageState = {
   identity: string | undefined
@@ -166,45 +97,63 @@ type UsageState = {
 }
 
 type UsageViewProps = {
-  api: TuiPluginApi
+  context: TuiPluginContext
   sessionID: string
   state: Record<string, UsageState>
   setState: (state: UsageState) => void
 }
 
+export default Plugin.define({
+  id: "opencode-codex-lb",
+  setup(context) {
+    const [usageBySession, setUsageBySession] = context.storage.memory("usageBySession", {
+      initial: {} as Record<string, UsageState>,
+    })
+    const location = context.location ?? context.data.location.default()
+    void context.data.location.provider.sync(location).catch(() => {})
+
+    return context.ui.slot({
+      append: "sidebar.content",
+      render: ({ sessionID }) => (
+        <UsageView
+          context={context}
+          sessionID={sessionID}
+          state={usageBySession}
+          setState={(state) => setUsageBySession((draft) => { draft[sessionID] = state })}
+        />
+      ),
+    })
+  },
+})
+
 function UsageView(props: UsageViewProps) {
   const [refresh, setRefresh] = createSignal(0)
   let requestVersion = 0
 
+  const location = props.context.location ?? props.context.data.location.default()
   const refreshSession = (sessionID: string) => {
-    if (sessionID === props.sessionID) {
-      setRefresh((value) => value + 1)
-    }
+    if (sessionID === props.sessionID) setRefresh((value) => value + 1)
   }
   const stopRefresh = [
-    props.api.event.on("session.updated", (event) => refreshSession(sessionIDFromUpdatedEvent(event))),
-    props.api.event.on("message.updated", (event) => refreshSession(event.properties.sessionID)),
-    props.api.event.on("message.removed", (event) => refreshSession(event.properties.sessionID)),
-    props.api.event.on("tui.session.select", (event) => refreshSession(event.properties.sessionID)),
+    props.context.data.on("session.model.selected", (event) => refreshSession(event.data.sessionID)),
+    props.context.data.on("session.execution.succeeded", (event) => refreshSession(event.data.sessionID)),
+    props.context.data.on("tui.session.select", (event) => refreshSession(event.data.sessionID)),
+    props.context.data.on("provider.updated", () => {
+      props.context.data.location.provider.invalidate(location)
+      void props.context.data.location.provider.sync(location).then(() => {
+        setRefresh((value) => value + 1)
+      }).catch(() => {})
+    }),
   ]
   onCleanup(() => stopRefresh.forEach((stop) => stop()))
 
   createEffect(() => {
     refresh()
-    const messageContext = resolveLatestMessageContext(props.api.state.session.messages(props.sessionID))
-    const session = (
-      props.api.state.session as TuiPluginApi["state"]["session"] & {
-        get?: (sessionID: string) => ActiveProviderContext | undefined
-      }
-    ).get?.(props.sessionID)
-    const providerID = resolveActiveProviderID(
-      {
-        model: messageContext.model ?? session?.model,
-        agent: messageContext.agent ?? session?.agent,
-      },
-      props.api.state.config,
-    )
-    const provider = providerID ? props.api.state.provider.find((item) => item.id === providerID) : undefined
+    const messages = props.context.data.session.message.list(props.sessionID)
+    const session = props.context.data.session.get(props.sessionID)
+    const providerID = resolveActiveProviderID({ model: session?.model }, messages)
+    const providers = props.context.data.location.provider.list(location) ?? []
+    const provider = providers.find((item) => item.id === providerID)
     const credentials = providerID?.startsWith("codex-lb-") && provider
       ? resolveProviderCredentials(provider)
       : undefined
@@ -275,14 +224,14 @@ function UsageView(props: UsageViewProps) {
       when={hasUsageValue(usage()?.primary) || hasUsageValue(usage()?.secondary)}
     >
       <box flexDirection="column">
-        <text fg={props.api.theme.current.text}>
+        <text fg={props.context.theme.text.base}>
           <b>Codex LB</b>
         </text>
         <Show when={hasUsageValue(usage()?.primary)}>
-          <UsageRow api={props.api} label="Primary" value={() => usage()?.primary ?? 0} />
+          <UsageRow context={props.context} label="Primary" value={() => usage()?.primary ?? 0} />
         </Show>
         <Show when={hasUsageValue(usage()?.secondary)}>
-          <UsageRow api={props.api} label="Secondary" value={() => usage()?.secondary ?? 0} />
+          <UsageRow context={props.context} label="Secondary" value={() => usage()?.secondary ?? 0} />
         </Show>
       </box>
     </Show>
@@ -390,27 +339,23 @@ function evictUsageSupportForSignal(signal: AbortSignal) {
 }
 
 function UsageRow(props: {
-  api: TuiPluginApi
+  context: TuiPluginContext
   label: string
   value: () => number
 }) {
   const prefix = `${props.label}: `
   const barWidth = computeBarWidth(prefix.length)
   return (
-    <text fg={usageColor(props.api, props.value())}>
+    <text fg={usageColor(props.context, props.value())}>
       {prefix}{usageTrack(props.value(), barWidth)} {formatUsagePercentage(props.value())}%
     </text>
   )
 }
 
-function usageColor(api: TuiPluginApi, value: number) {
-  if (value > 50) {
-    return api.theme.current.success
-  }
-  if (value >= 20) {
-    return api.theme.current.warning
-  }
-  return api.theme.current.error
+function usageColor(context: TuiPluginContext, value: number) {
+  if (value > 50) return context.theme.text.feedback.success.base
+  if (value >= 20) return context.theme.text.feedback.warning.base
+  return context.theme.text.feedback.error.base
 }
 
 export function hasUsageValue(value: number | null | undefined): value is number {

@@ -5,7 +5,6 @@ import {
   MODEL_FIELDS,
   MODELS_DEV_URL,
   OPENAI_PROVIDER_ID,
-  type AppClient,
   type ModelConfig,
   type ModelMap,
 } from "./types.js"
@@ -91,7 +90,7 @@ async function loadJSON(filePath: string): Promise<unknown | null> {
   }
 }
 
-async function loadMirroredModelsFromCache(client: AppClient): Promise<ModelMap | null> {
+async function loadMirroredModelsFromCache(): Promise<ModelMap | null> {
   const candidates = await listCacheCandidates()
 
   for (const filePath of candidates) {
@@ -105,7 +104,7 @@ async function loadMirroredModelsFromCache(client: AppClient): Promise<ModelMap 
       continue
     }
 
-    await log(client, "debug", "Using cached models catalog", {
+    await log("debug", "Using cached models catalog", {
       path: filePath,
     })
     return mirrored
@@ -182,16 +181,8 @@ export function buildMirroredOpenAIModels(catalog: unknown): ModelMap | null {
   return mirrored
 }
 
-export function cloneModelMap(source: ModelMap): ModelMap {
-  const copy: ModelMap = {}
-  for (const [modelID, modelConfig] of Object.entries(source)) {
-    copy[modelID] = cloneValue(modelConfig)
-  }
-  return copy
-}
-
-export async function fetchMirroredModels(client: AppClient): Promise<ModelMap | null> {
-  const cached = await loadMirroredModelsFromCache(client)
+export async function fetchMirroredModels(): Promise<ModelMap | null> {
+  const cached = await loadMirroredModelsFromCache()
   if (cached) {
     return cached
   }
@@ -201,7 +192,7 @@ export async function fetchMirroredModels(client: AppClient): Promise<ModelMap |
   try {
     catalog = await fetchJSON(MODELS_DEV_URL, { method: "GET" }, 20_000)
   } catch (error) {
-    await log(client, "warn", "Failed models.dev catalog fetch", {
+    await log("warn", "Failed models.dev catalog fetch", {
       url: MODELS_DEV_URL,
       detail: error instanceof Error ? error.message : String(error),
     })
@@ -210,7 +201,7 @@ export async function fetchMirroredModels(client: AppClient): Promise<ModelMap |
 
   const mirrored = buildMirroredOpenAIModels(catalog)
   if (!mirrored) {
-    await log(client, "warn", "Missing openai entry from models.dev", {
+    await log("warn", "Missing openai entry from models.dev", {
       provider: OPENAI_PROVIDER_ID,
     })
     return null

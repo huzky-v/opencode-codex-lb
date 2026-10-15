@@ -1,7 +1,7 @@
-import type { Config, PluginInput } from "@opencode-ai/plugin"
+import { Model, Provider } from "@opencode/plugin"
 import { discoverLiveModels } from "./discovery.js"
 import { log } from "./logger.js"
-import { fetchMirroredModels, cloneModelMap } from "./models.js"
+import { fetchMirroredModels } from "./models.js"
 import {
   getServices,
   normalizeBaseURL,
@@ -11,376 +11,283 @@ import {
 import {
   SERVICE_PROVIDER_PREFIX,
   type APIKeyResolution,
+  type BuiltProvider,
+  type DiscoveryResult,
+  type ModelConfig,
   type ModelMap,
-  type ProviderConfig,
   type ServiceBuildResult,
 } from "./types.js"
-import { cloneValue, isRecord } from "./utils.js"
+import { isRecord } from "./utils.js"
 
+const OPENAI_COMPATIBLE_PACKAGE = "@opencode/ai/providers/openai-compatible"
 const GROUP_PROVIDER_ID = SERVICE_PROVIDER_PREFIX
 
-function buildProviderID(service: string): string {
-  return `${SERVICE_PROVIDER_PREFIX}-${service}`
-}
+function servicesFromProviderList(providers: readonly unknown[]): Record<string, unknown> {
+  const prefixed: Record<string, unknown> = {}
+  let grouped: Record<string, unknown> = {}
 
-function getConfigProviders(config: Config): Record<string, unknown> {
-  if (!isRecord(config.provider)) {
-    return {}
-  }
-  return config.provider as Record<string, unknown>
-}
+  for (const provider of providers) {
+    if (!isRecord(provider) || typeof provider.id !== "string") continue
+    const settings = isRecord(provider.settings) ? provider.settings : {}
+    const options = isRecord(settings.options) ? settings.options : {}
 
-function extractServicesFromGroupProvider(input: unknown): {
-  services: Record<string, unknown>
-  used: boolean
-} {
-  if (!isRecord(input)) {
-    return { services: {}, used: false }
-  }
-
-  const options = isRecord(input.options) ? input.options : undefined
-  if (options && isRecord(options.services)) {
-    return {
-      services: options.services,
-      used: true,
-    }
-  }
-
-  return { services: {}, used: false }
-}
-
-function extractServicesFromPrefixedProviders(configProviders: Record<string, unknown>): Record<string, unknown> {
-  const prefix = `${SERVICE_PROVIDER_PREFIX}-`
-  const services: Record<string, unknown> = {}
-
-  for (const [providerID, providerValue] of Object.entries(configProviders)) {
-    if (!providerID.startsWith(prefix)) {
-      continue
-    }
-
-    const serviceID = providerID.slice(prefix.length)
-    if (!serviceID) {
-      continue
-    }
-
-    if (!isRecord(providerValue)) {
-      services[serviceID] = {}
-      continue
-    }
-
-    const providerOptions = isRecord(providerValue.options) ? providerValue.options : {}
-    const baseURL =
-      typeof providerOptions.baseURL === "string"
-        ? providerOptions.baseURL
-        : typeof providerValue.baseURL === "string"
-          ? providerValue.baseURL
+    if (provider.id === GROUP_PROVIDER_ID) {
+      const services = isRecord(settings.services)
+        ? settings.services
+        : isRecord(options.services)
+          ? options.services
           : undefined
+      if (services) grouped = services
+      continue
+    }
 
-    const apiKey =
-      typeof providerOptions.apiKey === "string"
-        ? providerOptions.apiKey
-        : typeof providerValue.apiKey === "string"
-          ? providerValue.apiKey
-          : undefined
+    const prefix = `${SERVICE_PROVIDER_PREFIX}-`
+    if (!provider.id.startsWith(prefix)) continue
 
-    services[serviceID] = {
-      ...(baseURL !== undefined ? { baseURL } : {}),
-      ...(apiKey !== undefined ? { apiKey } : {}),
+    const baseURL = typeof settings.baseURL === "string" ? settings.baseURL : options.baseURL
+    const apiKey = typeof settings.apiKey === "string" ? settings.apiKey : options.apiKey
+    prefixed[provider.id.slice(prefix.length)] = {
+      ...(typeof baseURL === "string" ? { baseURL } : {}),
+      ...(typeof apiKey === "string" ? { apiKey } : {}),
     }
   }
 
-  return services
+  return { ...prefixed, ...grouped }
 }
 
-function resolveServices(
-  options: Record<string, unknown> | undefined,
-  config: Config,
-): Record<string, unknown> {
-  const configProviders = getConfigProviders(config)
-  const fromOptions = getServices(options)
-  const fromPrefixedProviders = extractServicesFromPrefixedProviders(configProviders)
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
 
-  const groupProvider = configProviders[GROUP_PROVIDER_ID]
-  const fromGroupProvider = extractServicesFromGroupProvider(groupProvider)
-  if (fromGroupProvider.used) {
-    delete configProviders[GROUP_PROVIDER_ID]
+function nonNegativeInteger(value: unknown, fallback: number): number {
+  const number = finiteNumber(value)
+  return number !== undefined && number >= 0 ? Math.floor(number) : fallback
+}
+
+function modelCost(raw: unknown): Array<Record<string, unknown>> {
+  if (!isRecord(raw)) return []
+
+  const cache = isRecord(raw.cache) ? raw.cache : {}
+  const input = finiteNumber(raw.input)
+  const output = finiteNumber(raw.output)
+  const cacheRead = finiteNumber(raw.cache_read) ?? finiteNumber(cache.read)
+  const cacheWrite = finiteNumber(raw.cache_write) ?? finiteNumber(cache.write)
+  if (input === undefined && output === undefined && cacheRead === undefined && cacheWrite === undefined) return []
+
+  return [{
+    input: input ?? 0,
+    output: output ?? 0,
+    cache: { read: cacheRead ?? 0, write: cacheWrite ?? 0 },
+  }]
+}
+
+function modelVariants(raw: unknown): Array<Record<string, unknown>> {
+  if (!isRecord(raw)) return []
+  return Object.entries(raw).map(([id, variant]) => ({
+    id,
+    ...(isRecord(variant) ? { settings: variant } : {}),
+  }))
+}
+
+export function toOpenCodeModelInfo(
+  providerID: string,
+  modelID: string,
+  config: ModelConfig,
+): Model.Info {
+  const provider = Provider.ID.make(providerID)
+  const model = {
+    ...Model.Info.default(provider, modelID as Model.ID),
+  } as unknown as Record<string, unknown>
+
+  if (typeof config.name === "string" && config.name.trim()) model.name = config.name
+  if (typeof config.family === "string") model.family = config.family
+
+  if (typeof config.release_date === "string") {
+    const released = Date.parse(config.release_date)
+    if (Number.isFinite(released)) model.time = { released }
+  }
+
+  const modalities = isRecord(config.modalities) ? config.modalities : {}
+  const capabilities = { ...(model.capabilities as Record<string, unknown>) }
+  if (Array.isArray(modalities.input)) {
+    capabilities.input = modalities.input.filter((value): value is string => typeof value === "string")
+  }
+  if (Array.isArray(modalities.output)) {
+    capabilities.output = modalities.output.filter((value): value is string => typeof value === "string")
+  }
+  if (config.attachment === true && Array.isArray(capabilities.input) && !capabilities.input.includes("image")) {
+    capabilities.input = [...capabilities.input, "image"]
+  }
+  if (typeof config.tool_call === "boolean") capabilities.tools = config.tool_call
+  model.capabilities = capabilities
+
+  if (typeof config.status === "string" && ["alpha", "beta", "deprecated", "active"].includes(config.status)) {
+    model.status = config.status
+  }
+
+  const cost = modelCost(config.cost)
+  if (cost.length > 0) model.cost = cost
+
+  if (isRecord(config.limit)) {
+    const limit = model.limit as Record<string, unknown>
+    limit.context = nonNegativeInteger(config.limit.context, Number(limit.context))
+    limit.output = nonNegativeInteger(config.limit.output, Number(limit.output))
+    if (config.limit.input !== undefined) {
+      limit.input = nonNegativeInteger(config.limit.input, Number(limit.context))
+    }
+  }
+
+  const settings: Record<string, unknown> = {}
+  for (const key of ["temperature", "reasoning", "reasoning_options", "interleaved"] as const) {
+    if (config[key] !== undefined) settings[key] = config[key]
+  }
+  if (Object.keys(settings).length > 0) model.settings = settings
+
+  const variants = modelVariants(config.variants)
+  if (variants.length > 0) model.variants = variants
+
+  return model as unknown as Model.Info
+}
+
+function buildProviderInfo(
+  service: string,
+  baseURL: string,
+  apiKey: APIKeyResolution,
+): Provider.Info {
+  const settings: Record<string, unknown> = { baseURL }
+  if (apiKey.mode === "literal" || (apiKey.mode === "env" && apiKey.key)) {
+    settings.apiKey = apiKey.key
   }
 
   return {
-    ...fromOptions,
-    ...fromPrefixedProviders,
-    ...fromGroupProvider.services,
+    ...Provider.Info.empty(Provider.ID.make(`${SERVICE_PROVIDER_PREFIX}-${service}`)),
+    name: `Codex LB (${service})`,
+    activation: "enabled",
+    package: OPENAI_COMPATIBLE_PACKAGE,
+    settings,
   }
-}
-
-function buildProviderConfig(input: {
-  service: string
-  baseURL: string
-  apiKey: APIKeyResolution
-  models: ModelMap
-}): ProviderConfig {
-  const options: Record<string, unknown> = {
-    baseURL: input.baseURL,
-  }
-
-  if (input.apiKey.mode === "literal") {
-    options.apiKey = input.apiKey.key
-  }
-
-  const provider: ProviderConfig = {
-    npm: "@ai-sdk/openai",
-    name: `Codex LB (${input.service})`,
-    options,
-    models: input.models,
-  }
-
-  if (input.apiKey.mode === "env") {
-    provider.env = [input.apiKey.envName]
-  }
-
-  return provider
 }
 
 async function buildServiceProvider(
-  client: PluginInput["client"],
   serviceKey: string,
   rawService: unknown,
   mirroredModels: ModelMap | null,
 ): Promise<ServiceBuildResult> {
   const normalizedService = validateServiceKey(serviceKey)
   if (!normalizedService) {
-    await log(client, "warn", "Invalid service config", {
+    await log("warn", "Invalid service config", {
       service: serviceKey,
       reason: "Service key must match /^[a-z0-9][a-z0-9-]*$/",
     })
-    return {
-      status: "skip",
-      service: serviceKey,
-      reason: "invalid_service_key",
-    }
+    return { status: "skip", service: serviceKey, reason: "invalid_service_key" }
   }
 
   if (!isRecord(rawService)) {
-    await log(client, "warn", "Invalid service config", {
+    await log("warn", "Invalid service config", {
       service: normalizedService,
       reason: "Service value must be an object",
     })
-    return {
-      status: "skip",
-      service: normalizedService,
-      reason: "invalid_service_shape",
-    }
+    return { status: "skip", service: normalizedService, reason: "invalid_service_shape" }
   }
 
   const baseURL = normalizeBaseURL(rawService.baseURL)
   if (!baseURL) {
-    await log(client, "warn", "Invalid service config", {
+    await log("warn", "Invalid service config", {
       service: normalizedService,
       reason: "baseURL must be a valid URL",
     })
-    return {
-      status: "skip",
-      service: normalizedService,
-      reason: "invalid_base_url",
-    }
+    return { status: "skip", service: normalizedService, reason: "invalid_base_url" }
   }
 
-  if (
-    rawService.apiKey !== undefined &&
-    rawService.apiKey !== null &&
-    typeof rawService.apiKey !== "string"
-  ) {
-    await log(client, "warn", "Invalid service config", {
+  if (rawService.apiKey !== undefined && rawService.apiKey !== null && typeof rawService.apiKey !== "string") {
+    await log("warn", "Invalid service config", {
       service: normalizedService,
       reason: "apiKey must be a string when present",
     })
-    return {
-      status: "skip",
-      service: normalizedService,
-      reason: "invalid_api_key",
-    }
+    return { status: "skip", service: normalizedService, reason: "invalid_api_key" }
   }
 
   const apiKey = resolveAPIKey(rawService.apiKey)
   if (apiKey.mode === "env" && !apiKey.key) {
-    await log(client, "warn", "Missing env var for discovery", {
+    await log("warn", "Missing env var for discovery", {
       service: normalizedService,
       env: apiKey.envName,
     })
   }
 
-  const discoveryKey =
-    apiKey.mode === "literal"
-      ? apiKey.key
-      : apiKey.mode === "env"
-        ? apiKey.key
-        : undefined
-
-  let liveDiscovery: Awaited<ReturnType<typeof discoverLiveModels>> | null = null
+  const discoveryKey = apiKey.mode === "literal" ? apiKey.key : apiKey.mode === "env" ? apiKey.key : undefined
+  let liveDiscovery: DiscoveryResult | null = null
   if (discoveryKey) {
     liveDiscovery = await discoverLiveModels(baseURL, discoveryKey)
     if (!liveDiscovery.ok) {
-      if (liveDiscovery.reason === "invalid_payload") {
-        await log(client, "warn", "Invalid /models payload", {
-          service: normalizedService,
-          baseURL,
-          detail: liveDiscovery.detail,
-        })
-      } else {
-        await log(client, "warn", "Failed /models fetch", {
-          service: normalizedService,
-          baseURL,
-          detail: liveDiscovery.detail,
-        })
-      }
+      await log(
+        "warn",
+        liveDiscovery.reason === "invalid_payload" ? "Invalid /models payload" : "Failed /models fetch",
+        { service: normalizedService, baseURL, detail: liveDiscovery.detail },
+      )
     }
   }
 
-  const hasMirror = mirroredModels !== null
-  const liveIDs = liveDiscovery && liveDiscovery.ok ? liveDiscovery.ids : null
-  const hasLive = liveIDs !== null
-
-  if (!hasMirror && !hasLive) {
-    await log(client, "warn", "Skipping service without model catalog", {
+  const liveIDs = liveDiscovery?.ok ? liveDiscovery.ids : null
+  if (mirroredModels === null && liveIDs === null) {
+    await log("warn", "Skipping service without model catalog", {
       service: normalizedService,
       reason: "Both models.dev mirroring and live /models discovery unavailable",
     })
-    return {
-      status: "skip",
-      service: normalizedService,
-      reason: "no_catalog_data",
-    }
+    return { status: "skip", service: normalizedService, reason: "no_catalog_data" }
   }
 
-  let finalModels: ModelMap
-
+  const finalModels: ModelMap = {}
   if (liveIDs) {
-    if (hasMirror && mirroredModels) {
-      finalModels = {}
-      for (const modelID of liveIDs) {
-        if (mirroredModels[modelID]) {
-          finalModels[modelID] = cloneValue(mirroredModels[modelID])
-          continue
-        }
-        finalModels[modelID] = { name: modelID }
-      }
-    } else {
-      finalModels = {}
-      for (const modelID of liveIDs) {
-        finalModels[modelID] = { name: modelID }
-      }
+    for (const modelID of liveIDs) {
+      finalModels[modelID] = mirroredModels?.[modelID] ?? { name: modelID }
     }
   } else if (mirroredModels) {
-    finalModels = cloneModelMap(mirroredModels)
-  } else {
-    finalModels = {}
+    Object.assign(finalModels, mirroredModels)
   }
 
-  const providerID = buildProviderID(normalizedService)
-  const provider = buildProviderConfig({
-    service: normalizedService,
-    baseURL,
-    apiKey,
-    models: finalModels,
-  })
+  const providerID = `${SERVICE_PROVIDER_PREFIX}-${normalizedService}`
+  const models = Object.entries(finalModels).map(([modelID, config]) =>
+    toOpenCodeModelInfo(providerID, modelID, config),
+  )
 
   return {
     status: "ok",
-    providerID,
-    provider,
+    provider: {
+      providerID,
+      info: buildProviderInfo(normalizedService, baseURL, apiKey),
+      models,
+    },
   }
 }
 
 export async function buildProviders(
-  input: PluginInput,
-  options?: Record<string, unknown>,
-  config?: Config,
-): Promise<Record<string, ProviderConfig>> {
-  const services = config ? resolveServices(options, config) : getServices(options)
+  options: unknown,
+  configuredProviders: readonly unknown[],
+): Promise<BuiltProvider[]> {
+  const services = { ...getServices(options), ...servicesFromProviderList(configuredProviders) }
   if (Object.keys(services).length === 0) {
-    await log(input.client, "warn", "Invalid service config", {
-      reason: "No services configured",
-    })
-    return {}
+    await log("warn", "Invalid service config", { reason: "No services configured" })
+    return []
   }
 
-  const mirroredModels = await fetchMirroredModels(input.client)
-  const serviceEntries = Object.entries(services)
-
+  const mirroredModels = await fetchMirroredModels()
   const settled = await Promise.allSettled(
-    serviceEntries.map(([serviceKey, serviceConfig]) =>
-      buildServiceProvider(input.client, serviceKey, serviceConfig, mirroredModels),
+    Object.entries(services).map(([serviceKey, serviceConfig]) =>
+      buildServiceProvider(serviceKey, serviceConfig, mirroredModels),
     ),
   )
 
-  const providerMap: Record<string, ProviderConfig> = {}
-
+  const providers: BuiltProvider[] = []
   for (const result of settled) {
     if (result.status === "rejected") {
-      await log(input.client, "warn", "Service provider build failed", {
+      await log("warn", "Service provider build failed", {
         detail: result.reason instanceof Error ? result.reason.message : String(result.reason),
       })
       continue
     }
-
-    if (result.value.status === "skip") {
-      continue
-    }
-
-    providerMap[result.value.providerID] = result.value.provider
+    if (result.value.status === "ok") providers.push(result.value.provider)
   }
 
-  return providerMap
-}
-
-export function injectProviders(
-  config: Config,
-  providers: Record<string, ProviderConfig>,
-  client: PluginInput["client"],
-): Promise<void>[] {
-  if (!isRecord(config.provider)) {
-    config.provider = {}
-  }
-
-  const providerConfig = config.provider as Record<string, unknown>
-  const logTasks: Promise<void>[] = []
-
-  for (const [providerID, providerValue] of Object.entries(providers)) {
-    const existingProvider = providerConfig[providerID]
-    if (existingProvider !== undefined) {
-      logTasks.push(
-        log(client, "warn", "Provider ID already exists and will be overwritten", {
-          provider: providerID,
-        }),
-      )
-
-      if (isRecord(existingProvider)) {
-        const existingOptions = isRecord(existingProvider.options) ? existingProvider.options : {}
-        const mergedProvider: Record<string, unknown> = {
-          ...existingProvider,
-          npm: providerValue.npm,
-          options: {
-            ...existingOptions,
-            ...providerValue.options,
-          },
-          models: providerValue.models,
-        }
-
-        if (providerValue.env) {
-          mergedProvider.env = providerValue.env
-        }
-
-        if (typeof existingProvider.name !== "string" || existingProvider.name.trim() === "") {
-          mergedProvider.name = providerValue.name
-        }
-
-        providerConfig[providerID] = mergedProvider
-        continue
-      }
-    }
-
-    providerConfig[providerID] = providerValue
-  }
-
-  return logTasks
+  return providers
 }

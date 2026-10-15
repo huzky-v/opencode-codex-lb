@@ -1,17 +1,18 @@
 import { expect, test } from "bun:test"
 
-type ExportConditions = Record<"types" | "import" | "default", string>
 type PackageManifest = {
-  exports: Record<string, ExportConditions>
-  files: string[]
+  dependencies: Record<string, string>
+  exports: Record<string, Record<"types" | "import" | "default", string>>
+  peerDependencies: Record<string, string>
+  "oc-plugin"?: string[]
 }
 
 const manifest = (await Bun.file(
   new URL("../package.json", import.meta.url),
 ).json()) as PackageManifest
 
-test("exports the server and TUI entrypoints", () => {
-  expect(manifest.exports["./server"]).toEqual({
+test("exports V2 server and CLI entrypoints", () => {
+  expect(manifest.exports["."]).toEqual({
     types: "./dist/index.d.ts",
     import: "./dist/index.js",
     default: "./dist/index.js",
@@ -23,19 +24,10 @@ test("exports the server and TUI entrypoints", () => {
   })
 })
 
-test("declares the oc-plugin targets", () => {
-  expect((manifest as { "oc-plugin"?: string[] })["oc-plugin"]).toEqual([
-    "server",
-    "tui",
-  ])
+test("depends on the V2 plugin SDK and OpenTUI-compatible CLI API", () => {
+  expect(manifest.dependencies["@opencode/plugin"]).toBe("2.0.29")
+  expect(manifest.peerDependencies["@opentui/core"]).toBe(">=0.5.17")
+  expect(manifest.peerDependencies["@opentui/solid"]).toBe(">=0.5.17")
+  expect(manifest["oc-plugin"]).toBeUndefined()
 })
 
-test("publishes every exported entrypoint from dist", () => {
-  expect(manifest.files).toContain("dist")
-
-  for (const conditions of Object.values(manifest.exports)) {
-    for (const exportedPath of Object.values(conditions)) {
-      expect(exportedPath.startsWith("./dist/")).toBe(true)
-    }
-  }
-})

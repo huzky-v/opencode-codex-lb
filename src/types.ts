@@ -1,4 +1,4 @@
-import type { PluginInput, PluginOptions } from "@opencode-ai/plugin"
+import type { Model, PluginOptions, Provider } from "@opencode/plugin"
 
 export const SERVICE = "opencode-codex-lb"
 export const MODELS_DEV_URL = "https://models.dev/api.json"
@@ -21,7 +21,6 @@ export const MODEL_FIELDS = [
 ] as const
 
 export type LogLevel = "debug" | "info" | "warn" | "error"
-export type AppClient = PluginInput["client"]
 
 export type ServiceDefinition = {
   baseURL: string
@@ -35,12 +34,10 @@ export type CodexLBOptions = PluginOptions & {
 export type ModelConfig = Record<string, unknown>
 export type ModelMap = Record<string, ModelConfig>
 
-export type ProviderConfig = {
-  npm: string
-  name: string
-  options: Record<string, unknown>
-  env?: string[]
-  models: ModelMap
+export type BuiltProvider = {
+  providerID: string
+  info: Provider.Info
+  models: readonly Model.Info[]
 }
 
 export type DiscoveryResult =
@@ -55,8 +52,7 @@ export type APIKeyResolution =
 export type ServiceBuildResult =
   | {
       status: "ok"
-      providerID: string
-      provider: ProviderConfig
+      provider: BuiltProvider
     }
   | {
       status: "skip"
