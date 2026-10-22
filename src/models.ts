@@ -130,22 +130,25 @@ export function mirrorModel(modelID: string, raw: unknown): ModelConfig {
     }
   }
 
-  if (
-    Array.isArray(raw.reasoning_options) &&
-    raw.reasoning_options.some(
-      (option) =>
-        isRecord(option) &&
-        option.type === "effort" &&
-        Array.isArray(option.values) &&
-        option.values.includes("max"),
+  if (Array.isArray(raw.reasoning_options)) {
+    const efforts = raw.reasoning_options.flatMap((option) =>
+      isRecord(option) && option.type === "effort" && Array.isArray(option.values)
+        ? option.values.filter((value): value is string => typeof value === "string")
+        : [],
     )
-  ) {
-    mirrored.variants = {
-      max: {
-        reasoningEffort: "max",
-        reasoningSummary: "auto",
-        include: ["reasoning.encrypted_content"],
-      },
+    const uniqueEfforts = [...new Set(efforts)]
+
+    if (uniqueEfforts.length > 0) {
+      mirrored.variants = Object.fromEntries(
+        uniqueEfforts.map((effort) => [
+          effort,
+          {
+            reasoningEffort: effort,
+            reasoningSummary: "auto",
+            include: ["reasoning.encrypted_content"],
+          },
+        ]),
+      )
     }
   }
 
