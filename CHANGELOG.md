@@ -2,6 +2,16 @@
 
 All notable changes to `@huzky-v/opencode-codex-lb` are documented here.
 
+## [0.2.6] - 2026-10-23
+
+### Added
+
+- Generate reasoning variants for every effort advertised by `models.dev`.
+
+### Changed
+
+- Update the OpenCode V2 plugin and OpenTUI integrations, and declare the minimum Node.js and Bun runtimes.
+
 ## [0.2.5] - 2026-10-15
 
 ### Changed
