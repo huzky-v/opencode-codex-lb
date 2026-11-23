@@ -12,6 +12,7 @@ import {
   SERVICE_PROVIDER_PREFIX,
   type APIKeyResolution,
   type BuiltProvider,
+  type CodexLBOptions,
   type DiscoveryResult,
   type ModelConfig,
   type ModelMap,
@@ -153,6 +154,7 @@ function buildProviderInfo(
   service: string,
   baseURL: string,
   apiKey: APIKeyResolution,
+  promptMode: CodexLBOptions["promptMode"],
 ): Provider.Info {
   const settings: Record<string, unknown> = { baseURL }
   if (apiKey.mode === "literal" || (apiKey.mode === "env" && apiKey.key)) {
@@ -163,7 +165,7 @@ function buildProviderInfo(
     ...Provider.Info.empty(Provider.ID.make(`${SERVICE_PROVIDER_PREFIX}-${service}`)),
     name: `Codex LB (${service})`,
     activation: "enabled",
-    package: OPENAI_COMPATIBLE_PACKAGE,
+    package: promptMode === "completion" ? OPENAI_COMPATIBLE_PACKAGE : `${OPENAI_COMPATIBLE_PACKAGE}/responses`,
     settings,
   }
 }
@@ -172,6 +174,7 @@ async function buildServiceProvider(
   serviceKey: string,
   rawService: unknown,
   mirroredModels: ModelMap | null,
+  promptMode: CodexLBOptions["promptMode"],
 ): Promise<ServiceBuildResult> {
   const normalizedService = validateServiceKey(serviceKey)
   if (!normalizedService) {
@@ -255,14 +258,14 @@ async function buildServiceProvider(
     status: "ok",
     provider: {
       providerID,
-      info: buildProviderInfo(normalizedService, baseURL, apiKey),
+      info: buildProviderInfo(normalizedService, baseURL, apiKey, promptMode),
       models,
     },
   }
 }
 
 export async function buildProviders(
-  options: unknown,
+  options: CodexLBOptions,
   configuredProviders: readonly unknown[],
 ): Promise<BuiltProvider[]> {
   const services = { ...getServices(options), ...servicesFromProviderList(configuredProviders) }
@@ -274,7 +277,7 @@ export async function buildProviders(
   const mirroredModels = await fetchMirroredModels()
   const settled = await Promise.allSettled(
     Object.entries(services).map(([serviceKey, serviceConfig]) =>
-      buildServiceProvider(serviceKey, serviceConfig, mirroredModels),
+      buildServiceProvider(serviceKey, serviceConfig, mirroredModels, options?.promptMode),
     ),
   )
 

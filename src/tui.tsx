@@ -106,6 +106,8 @@ type UsageViewProps = {
 export default Plugin.define({
   id: "opencode-codex-lb",
   setup(context) {
+    if (context.options.showUsageSidebar === false) return
+
     const [usageBySession, setUsageBySession] = context.storage.memory("usageBySession", {
       initial: {} as Record<string, UsageState>,
     })

@@ -2,6 +2,16 @@
 
 All notable changes to `@huzky-v/opencode-codex-lb` are documented here.
 
+## [0.2.7] - 2026-11-23
+
+### Added
+
+- Added the `showUsageSidebar` option. Set it to `false` to hide the Codex LB usage panel and stop usage polling; it remains visible by default when usage is available.
+
+### Changed
+
+- Prompts now use the Responses API (SSE) by default. Set the plugin option `promptMode` to `"completion"` to retain Chat Completions streaming.
+
 ## [0.2.6] - 2026-10-23
 
 ### Added

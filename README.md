@@ -22,6 +22,8 @@ Add the package to the `plugins` array in your OpenCode v2 configuration (normal
     {
       "package": "@huzky-v/opencode-codex-lb",
       "options": {
+        "promptMode": "response",
+        "showUsageSidebar": true,
         "services": {
           "paid": {
             "baseURL": "https://codex-lb.example.com/v1",
@@ -37,6 +39,13 @@ Add the package to the `plugins` array in your OpenCode v2 configuration (normal
   ]
 }
 ```
+
+`options.promptMode` applies to all configured services. Omit it or use `"response"`
+to stream prompts through `/responses` (SSE). Use `"completion"` to stream through
+`/chat/completions` for endpoints that only support Chat Completions.
+
+`options.showUsageSidebar` defaults to `true`: the right sidebar shows Codex LB
+usage when available. Set it to `false` to hide the panel and stop usage polling.
 
 Restart OpenCode after editing the configuration. Environment references use
 `{env:VAR_NAME}`; literal API keys are also supported.

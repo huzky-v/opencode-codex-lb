@@ -28,6 +28,8 @@ export type ServiceDefinition = {
 }
 
 export type CodexLBOptions = PluginOptions & {
+  promptMode?: "response" | "completion"
+  showUsageSidebar?: boolean
   services?: Record<string, ServiceDefinition>
 }
 
