@@ -7,31 +7,44 @@ import solidPreset from "babel-preset-solid"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, "..")
-const sourcePath = path.join(rootDir, "src", "tui.tsx")
+const sourceDir = path.join(rootDir, "src", "tui")
+const srcDir = path.join(rootDir, "src")
 const distDir = path.join(rootDir, "dist")
-const distSourcePath = path.join(distDir, "tui.tsx")
-const distJsPath = path.join(distDir, "tui.js")
-const distJsxPath = path.join(distDir, "tui.jsx")
-const distJsxMapPath = path.join(distDir, "tui.jsx.map")
 
-await fs.mkdir(distDir, { recursive: true })
-await fs.copyFile(sourcePath, distSourcePath)
-
-const source = await fs.readFile(sourcePath, "utf8")
-const transformed = await babel.transformAsync(source, {
-  filename: sourcePath,
-  configFile: false,
-  babelrc: false,
-  presets: [
-    [solidPreset, { moduleName: "@opentui/solid", generate: "universal" }],
-    [typescriptPreset],
-  ],
-})
-
-if (!transformed?.code) {
-  throw new Error("Babel transform returned empty output for src/tui.tsx")
+async function listTsxFiles(dir) {
+  const found = []
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) found.push(...(await listTsxFiles(entryPath)))
+    else if (entry.isFile() && entry.name.endsWith(".tsx")) found.push(entryPath)
+  }
+  return found
 }
 
-await fs.writeFile(distJsPath, `${transformed.code}\n`)
-await fs.rm(distJsxPath, { force: true })
-await fs.rm(distJsxMapPath, { force: true })
+await fs.mkdir(distDir, { recursive: true })
+for (const sourcePath of await listTsxFiles(sourceDir)) {
+  const distStem = path.join(distDir, path.relative(srcDir, sourcePath)).replace(/\.tsx$/, "")
+  const transformed = await babel.transformAsync(await fs.readFile(sourcePath, "utf8"), {
+    filename: sourcePath,
+    configFile: false,
+    babelrc: false,
+    presets: [
+      [solidPreset, { moduleName: "@opentui/solid", generate: "universal" }],
+      [typescriptPreset],
+    ],
+  })
+
+  if (!transformed?.code) {
+    throw new Error(`Babel transform returned empty output for ${path.relative(srcDir, sourcePath)}`)
+  }
+
+  await fs.mkdir(path.dirname(distStem), { recursive: true })
+  await fs.writeFile(`${distStem}.js`, `${transformed.code}\n`)
+  await fs.rm(`${distStem}.jsx`, { force: true })
+  await fs.rm(`${distStem}.jsx.map`, { force: true })
+}
+
+await fs.rm(path.join(distDir, "tui.tsx"), { force: true })
+const reexport = `export { default } from "./tui/index.js";\nexport * from "./tui/index.js";\n`
+await fs.writeFile(path.join(distDir, "tui.js"), reexport)
+await fs.writeFile(path.join(distDir, "tui.d.ts"), reexport)

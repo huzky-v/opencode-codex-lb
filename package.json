@@ -1,6 +1,6 @@
 {
   "name": "@huzky-v/opencode-codex-lb",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "OpenCode plugin for service-based OpenAI-compatible load balancing",
   "license": "MIT",
   "repository": {
@@ -16,6 +16,11 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./server": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
@@ -37,6 +42,7 @@
     "dist/types.*",
     "dist/utils.*",
     "dist/usage.*",
+    "dist/tui",
     "dist/tui.js",
     "dist/tui.d.ts"
   ],

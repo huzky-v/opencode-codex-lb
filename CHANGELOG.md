@@ -2,6 +2,12 @@
 
 All notable changes to `@huzky-v/opencode-codex-lb` are documented here.
 
+## [0.2.8] - 2026-11-25
+
+### Changed
+
+- Align the TUI entrypoint with package-root plugin loading and honor usage-sidebar visibility from resolved configuration.
+
 ## [0.2.7] - 2026-11-23
 
 ### Added

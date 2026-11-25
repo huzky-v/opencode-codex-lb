@@ -17,13 +17,14 @@ const {
   hasUsageValue,
   getUsageSupport,
   isUsageSupportCacheFresh,
+  shouldHideUsageSidebar,
   resolveActiveProviderID,
   resolveLatestMessageContext,
   resolveProviderCredentials,
   shouldFetchUsage,
   formatUsagePercentage,
   usageTrack,
-} = await import("../src/tui")
+} = await import("../src/tui/index")
 
 const response = (body: unknown, headers: Record<string, string> = {}, ok = true) =>
   new Response(JSON.stringify(body), {
@@ -171,6 +172,19 @@ describe("TUI usage visibility", () => {
     expect(hasUsageValue(undefined)).toBe(false)
     expect(hasUsageValue(null)).toBe(false)
     expect(hasUsageValue(0)).toBe(true)
+  })
+
+  test("honours the TUI option and falls back to configured plugin options", () => {
+    const config = [{
+      info: {
+        plugins: [{ package: "file:///plugin", options: { showUsageSidebar: false } }],
+      },
+    }]
+
+    expect(shouldHideUsageSidebar({ showUsageSidebar: false }, [])).toBe(true)
+    expect(shouldHideUsageSidebar({ showUsageSidebar: true }, config)).toBe(false)
+    expect(shouldHideUsageSidebar({}, config)).toBe(true)
+    expect(shouldHideUsageSidebar({}, [])).toBe(false)
   })
 })
 

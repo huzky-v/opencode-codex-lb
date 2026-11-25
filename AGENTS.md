@@ -7,12 +7,14 @@ This repository ships `opencode-codex-lb`, an OpenCode plugin module that builds
 ## Architecture
 
 - `src/index.ts`: plugin entrypoint, lazy provider preparation, config injection.
+- `src/tui/index.tsx`: TUI entrypoint for the Codex LB sidebar; `tui.ts` is the source re-export shim.
 - `src/providers.ts`: service extraction, validation, provider construction, and merge behavior.
 - `src/models.ts`: models.dev mirroring and local cache loading.
 - `src/discovery.ts`: timeout-safe JSON fetch and live `/models` discovery.
 - `src/options.ts`: service and API key normalization/parsing.
 - `src/logger.ts`: resilient client logging wrapper.
 - `src/utils.ts`: shared helpers (`isRecord`, deep clone fallback).
+- `scripts/build-tui.mjs`: compiles TUI JSX to `dist/tui/` and generates the package-level `dist/tui` re-export.
 
 ## Key Behaviors
 

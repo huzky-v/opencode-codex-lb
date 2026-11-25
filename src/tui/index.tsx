@@ -3,7 +3,8 @@
 import { Plugin } from "@opencode/plugin/tui"
 import type { Context as TuiPluginContext } from "@opencode/plugin/tui/context"
 import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js"
-import { detectUsageSupport, fetchPooledUsage, type PooledUsage } from "./usage.js"
+import { detectUsageSupport, fetchPooledUsage, type PooledUsage } from "../usage.js"
+import { isRecord } from "../utils.js"
 
 type OpenTUIIntrinsicElements = import("@opentui/solid/jsx-runtime").JSX.IntrinsicElements
 
@@ -105,8 +106,8 @@ type UsageViewProps = {
 
 export default Plugin.define({
   id: "opencode-codex-lb",
-  setup(context) {
-    if (context.options.showUsageSidebar === false) return
+  async setup(context) {
+    if (await shouldHideUsageSidebarFromHost(context)) return
 
     const [usageBySession, setUsageBySession] = context.storage.memory("usageBySession", {
       initial: {} as Record<string, UsageState>,
@@ -127,6 +128,48 @@ export default Plugin.define({
     })
   },
 })
+
+type PluginConfigDocument = {
+  info?: {
+    plugins?: unknown
+  }
+}
+
+export function shouldHideUsageSidebar(
+  options: Readonly<Record<string, unknown>>,
+  config: readonly unknown[],
+): boolean {
+  if (typeof options.showUsageSidebar === "boolean") {
+    return options.showUsageSidebar === false
+  }
+
+  let configuredValue: boolean | undefined
+  for (const item of config) {
+    if (!isRecord(item) || !isRecord(item.info) || !Array.isArray(item.info.plugins)) continue
+
+    for (const plugin of item.info.plugins) {
+      if (!isRecord(plugin) || !isRecord(plugin.options)) continue
+      const value = plugin.options.showUsageSidebar
+      if (typeof value === "boolean") configuredValue = value
+    }
+  }
+
+  return configuredValue === false
+}
+
+async function shouldHideUsageSidebarFromHost(context: TuiPluginContext): Promise<boolean> {
+  if (typeof context.options.showUsageSidebar === "boolean") {
+    return context.options.showUsageSidebar === false
+  }
+
+  try {
+    const config = await context.client.config.get()
+    return shouldHideUsageSidebar({}, config as PluginConfigDocument[])
+  } catch {
+    // If config cannot be read, preserve the visible-by-default behavior.
+    return false
+  }
+}
 
 function UsageView(props: UsageViewProps) {
   const [refresh, setRefresh] = createSignal(0)
