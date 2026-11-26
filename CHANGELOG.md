@@ -2,6 +2,16 @@
 
 All notable changes to `@huzky-v/opencode-codex-lb` are documented here.
 
+## [0.2.9] - 2026-11-26
+
+### Fixed
+
+- Send `session-id`, `thread-id` and `x-client-request-id` headers on Codex LB requests so the ChatGPT upstream can route prompt-cache affinity per session (opencode only sets them for its own ChatGPT provider).
+
+### Changed
+
+- Response mode now uses OpenCode's native `@opencode/ai/providers/openai/responses` package instead of `openai-compatible/responses`, so GPT-6 prompt-cache handling (system prompt kept in `input`, effort and tool updates without prefix changes, `cache.ttl`) applies to Codex LB models.
+
 ## [0.2.8] - 2026-11-25
 
 ### Changed

@@ -21,6 +21,7 @@ import {
 import { isRecord } from "./utils.js"
 
 const OPENAI_COMPATIBLE_PACKAGE = "@opencode/ai/providers/openai-compatible"
+const OPENAI_RESPONSES_PACKAGE = "@opencode/ai/providers/openai/responses"
 const GROUP_PROVIDER_ID = SERVICE_PROVIDER_PREFIX
 
 function servicesFromProviderList(providers: readonly unknown[]): Record<string, unknown> {
@@ -165,7 +166,7 @@ function buildProviderInfo(
     ...Provider.Info.empty(Provider.ID.make(`${SERVICE_PROVIDER_PREFIX}-${service}`)),
     name: `Codex LB (${service})`,
     activation: "enabled",
-    package: promptMode === "completion" ? OPENAI_COMPATIBLE_PACKAGE : `${OPENAI_COMPATIBLE_PACKAGE}/responses`,
+    package: promptMode === "completion" ? OPENAI_COMPATIBLE_PACKAGE : OPENAI_RESPONSES_PACKAGE,
     settings,
   }
 }

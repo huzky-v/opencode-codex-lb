@@ -55,6 +55,16 @@ export default Plugin.define({
       }
     })
 
+    await ctx.session.hook("model.request", async (event) => {
+      if (!isCodexLBProviderID(event.model.providerID)) return
+      // ChatGPT routes its prompt cache on session-id, which opencode only sets for its own ChatGPT provider.
+      // Children share the parent's cache through x-session-affinity.
+      const affinity = event.headers["x-session-affinity"] ?? event.sessionID
+      event.headers["session-id"] = affinity
+      event.headers["thread-id"] = event.sessionID
+      event.headers["x-client-request-id"] = event.sessionID
+    })
+
     await ctx.session.hook("title", async (event) => {
       if (!isCodexLBProviderID(event.model.providerID)) return
       const provider = providers.find((item) => item.providerID === event.model.providerID)
